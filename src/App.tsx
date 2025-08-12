@@ -5,6 +5,7 @@ import Onboarding from './pages/onboarding'
 import OnboardingComplete from './pages/onboarding/complete'
 import NewListing from './pages/listings/new'
 import ListingPage from './pages/listings/[id]'
+import BookingSuccess from './pages/bookings/[id]/success'
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
           <Route path="onboarding/complete" element={<OnboardingComplete />} />
           <Route path="listings/new" element={<NewListing />} />
           <Route path="listings/:id" element={<ListingPage />} />
+          <Route path="bookings/:id/success" element={<BookingSuccess />} />
           <Route path="browse" element={<div className="p-8">Browse listings</div>} />
         </Route>
       </Routes>

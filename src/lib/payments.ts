@@ -116,38 +116,15 @@ export async function startCheckout(
   window.location.href = url;
 }
 
-// Create a booking and start checkout
+// Simplified booking function for listing page
 export async function bookListing(
-  listingId: string,
-  providerId: string,
+  bookingId: string,
+  amountCents: number,
   providerConnectId: string,
-  startAt: Date,
-  endAt: Date,
-  amountCents: number
+  listingId: string
 ) {
-  // Get current user
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
-  
-  // Create pending booking
-  const { data: booking, error } = await supabase
-    .from('bookings')
-    .insert({
-      listing_id: listingId,
-      customer_id: user.id,
-      provider_id: providerId,
-      start_at: startAt.toISOString(),
-      end_at: endAt.toISOString(),
-      amount_cents: amountCents,
-      status: 'pending'
-    })
-    .select()
-    .single();
-  
-  if (error) throw error;
-  
-  // Start checkout
-  await startCheckout(booking.id, amountCents, providerConnectId, listingId);
+  // Start checkout directly (booking already created)
+  await startCheckout(bookingId, amountCents, providerConnectId, listingId);
 }
 
 // Check if provider has completed onboarding
