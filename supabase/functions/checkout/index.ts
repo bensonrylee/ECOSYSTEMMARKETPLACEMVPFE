@@ -17,37 +17,51 @@ serve(async (req) => {
   }
 
   try {
-    const { amount_cents, currency, provider_connect_id, success_url, cancel_url, booking_id } = await req.json();
+    const { provider_connect_id, success_url, cancel_url, booking_id } = await req.json();
 
-    // Verify booking exists and is pending
     const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!, 
+      Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
       { auth: { persistSession: false } }
     );
-    
+
+    // 2.1 Verify booking
     const { data: booking, error } = await supabase
       .from("bookings")
-      .select("id, status, amount_cents, provider_id")
+      .select("id,status,amount_cents,currency,provider_id,listing_id")
       .eq("id", booking_id)
       .single();
-    
+
     if (error || !booking || booking.status !== "pending") {
-      return new Response(JSON.stringify({ error: "Invalid booking" }), { 
-        status: 400, 
-        headers: corsHeaders 
-      });
+      return new Response(JSON.stringify({ error: "Invalid booking" }), { status: 400, headers: corsHeaders });
     }
 
-    // Use verified amount from database, not client payload
-    const session = await stripe.checkout.sessions.create({
+    // 2.2 Ensure provider account matches destination and can charge
+    const { data: providerRow, error: provErr } = await supabase
+      .from("providers")
+      .select("stripe_connect_id, charges_enabled")
+      .eq("id", booking.provider_id)
+      .single();
+
+    if (provErr || !providerRow?.stripe_connect_id) {
+      return new Response(JSON.stringify({ error: "Provider not connected to Stripe" }), { status: 400, headers: corsHeaders });
+    }
+    if (!providerRow.charges_enabled) {
+      return new Response(JSON.stringify({ error: "Provider not ready to accept payments" }), { status: 400, headers: corsHeaders });
+    }
+    if (providerRow.stripe_connect_id !== provider_connect_id) {
+      return new Response(JSON.stringify({ error: "Destination mismatch" }), { status: 400, headers: corsHeaders });
+    }
+
+    // 2.3 Create session with idempotency keyed to booking_id
+    const params: Stripe.Checkout.SessionCreateParams = {
       mode: "payment",
-      client_reference_id: booking_id, // lets webhook find the booking
+      client_reference_id: booking.id,
       line_items: [{
         price_data: {
-          currency: currency || "cad", // Default to CAD
+          currency: booking.currency || "cad",
           product_data: { name: "Booking" },
-          unit_amount: booking.amount_cents // Use DB amount
+          unit_amount: booking.amount_cents
         },
         quantity: 1
       }],
@@ -57,7 +71,12 @@ serve(async (req) => {
       },
       success_url,
       cancel_url
-    });
+    };
+
+    const session = await stripe.checkout.sessions.create(
+      params,
+      { idempotencyKey: booking.id } // retriable client calls won't double-create
+    );
 
     return new Response(JSON.stringify({ url: session.url }), {
       headers: { "content-type": "application/json", ...corsHeaders },
