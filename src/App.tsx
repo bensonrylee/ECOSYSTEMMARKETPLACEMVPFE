@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout'
+import Home from './pages/home'
 import Onboarding from './pages/onboarding'
 import OnboardingComplete from './pages/onboarding/complete'
 import NewListing from './pages/listings/new'
@@ -10,15 +11,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Layout />}>
-          <Route index element={
-            <div className="p-8">
-              <h1>Marketplace</h1>
-              <nav className="mt-4 space-y-2">
-                <div><a href="/onboarding" className="text-blue-600">Onboarding</a></div>
-                <div><a href="/listings/new" className="text-blue-600">New Listing</a></div>
-              </nav>
-            </div>
-          } />
+          <Route index element={<Home />} />
           <Route path="onboarding" element={<Onboarding />} />
           <Route path="onboarding/complete" element={<OnboardingComplete />} />
           <Route path="listings/new" element={<NewListing />} />
