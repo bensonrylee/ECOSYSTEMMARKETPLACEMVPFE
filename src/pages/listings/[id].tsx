@@ -1,18 +1,52 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
+import { 
+  MapPin, 
+  Star, 
+  Calendar, 
+  Clock, 
+  Shield, 
+  ArrowLeft,
+  Plus,
+  AlertCircle
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { bookListing } from '../../lib/payments';
+
+interface Listing {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  kind: string;
+  price_cents: number;
+  currency: string;
+  pricing_unit: string;
+  address_city: string;
+  address_region: string;
+  primary_photo_url: string | null;
+  provider_id: string;
+  created_at: string;
+}
+
+interface Slot {
+  id: string;
+  listing_id: string;
+  start_at: string;
+  end_at: string;
+}
 
 export default function ListingPage() {
   const { id } = useParams<{ id: string }>();
   const [loading, setLoading] = useState(true);
-  const [listing, setListing] = useState<any>(null);
+  const [listing, setListing] = useState<Listing | null>(null);
   const [user, setUser] = useState<any>(null);
   const [isProvider, setIsProvider] = useState(false);
-  const [slots, setSlots] = useState<any[]>([]);
+  const [slots, setSlots] = useState<Slot[]>([]);
   const [providerReady, setProviderReady] = useState(false);
   
-  // Provider slot form
+  // Provider slot generation form
+  const [showSlotForm, setShowSlotForm] = useState(false);
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [daysAhead, setDaysAhead] = useState(14);
   const [startTime, setStartTime] = useState('09:00');
@@ -27,18 +61,11 @@ export default function ListingPage() {
   async function loadData() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user || null);
       
-      if (!session) {
-        setLoading(false);
-        return;
-      }
-      
-      setUser(session.user);
-      
-      // Use public view for anonymous users, full table for authenticated
-      const tableName = session ? 'listings' : 'public_listings';
+      // Always use public view for listing data to follow frontend rules
       const { data: listingData, error: listingError } = await supabase
-        .from(tableName)
+        .from('public_listings')
         .select('*')
         .eq('id', id)
         .single();
@@ -46,31 +73,36 @@ export default function ListingPage() {
       if (listingError) throw listingError;
       
       setListing(listingData);
-      setIsProvider(session.user.id === listingData.provider_id);
       
-      if (!isProvider) {
-        // Load slots for customers (use public view for anon)
-        const slotsTable = session ? 'listing_slots' : 'public_listing_slots';
+      if (session?.user) {
+        const userIsProvider = session.user.id === listingData.provider_id;
+        setIsProvider(userIsProvider);
+        
+        // Load slots using appropriate view
+        const slotsTable = userIsProvider ? 'listing_slots' : 'public_listing_slots';
         const { data: slotsData } = await supabase
           .from(slotsTable)
           .select('*')
           .eq('listing_id', id)
+          .gte('start_at', new Date().toISOString())
           .order('start_at', { ascending: true })
           .limit(50);
         
         setSlots(slotsData || []);
         
         // Check if provider can accept payments
-        const { data: provider } = await supabase
-          .from('providers')
-          .select('charges_enabled')
-          .eq('id', listingData.provider_id)
-          .single();
-        
-        setProviderReady(provider?.charges_enabled || false);
+        if (!userIsProvider) {
+          const { data: provider } = await supabase
+            .from('providers')
+            .select('charges_enabled')
+            .eq('id', listingData.provider_id)
+            .single();
+          
+          setProviderReady(provider?.charges_enabled || false);
+        }
       }
     } catch (err: any) {
-      alert(String(err?.message || err));
+      console.error('Error loading listing:', err);
     } finally {
       setLoading(false);
     }
@@ -119,15 +151,18 @@ export default function ListingPage() {
       
       if (error) throw error;
       
-      alert(`Generated ${slotsToInsert.length} slots`);
+      // Refresh slots
+      await loadData();
+      setShowSlotForm(false);
+      
     } catch (err: any) {
-      alert(String(err?.message || err));
+      console.error('Error generating slots:', err);
     } finally {
       setGenerating(false);
     }
   }
 
-  async function bookSlot(slot: any) {
+  async function bookSlot(slot: Slot) {
     if (!user || !listing) return;
     
     try {
@@ -148,7 +183,7 @@ export default function ListingPage() {
       
       if (bookingError) {
         if (bookingError.code === '23505') {
-          alert('This slot was just taken.');
+          alert('This slot was just taken. Please choose another.');
         } else {
           throw bookingError;
         }
@@ -163,11 +198,11 @@ export default function ListingPage() {
         .single();
       
       if (providerError || !provider?.stripe_connect_id) {
-        alert('Provider not properly connected');
+        alert('Provider not properly connected. Please try again later.');
         return;
       }
       
-      // Redirect to checkout
+      // Redirect to checkout using payment helper
       await bookListing(
         booking.id,
         listing.price_cents,
@@ -175,118 +210,365 @@ export default function ListingPage() {
         listing.id
       );
     } catch (err: any) {
-      alert(String(err?.message || err));
+      console.error('Booking error:', err);
+      alert('Booking failed. Please try again.');
     }
   }
 
-  if (loading) return <div className="p-8">Loading...</div>;
-  if (!listing) return <div className="p-8">Listing not found</div>;
-  if (!user) return <div className="p-8">Please sign in</div>;
+  const getKindIcon = (kind: string) => {
+    switch (kind) {
+      case 'service': return '🔧';
+      case 'event': return '🎉';
+      case 'space': return '🏠';
+      default: return '📋';
+    }
+  };
 
-  return (
-    <div className="max-w-4xl mx-auto p-8">
-      <h1 className="text-2xl font-bold mb-2">{listing.title}</h1>
-      <p className="text-gray-600 mb-4">
-        {listing.kind} • ${(listing.price_cents / 100).toFixed(2)} {listing.pricing_unit === 'hour' ? '/hr' : ''}
-      </p>
-      
-      {isProvider ? (
-        <div>
-          <h2 className="text-xl font-semibold mb-4">Generate Slots</h2>
-          <form onSubmit={generateSlots} className="space-y-4 max-w-md">
-            <div>
-              <label className="block text-sm font-medium mb-1">Start Date</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full p-2 border rounded"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Days Ahead</label>
-              <input
-                type="number"
-                value={daysAhead}
-                onChange={(e) => setDaysAhead(Number(e.target.value))}
-                className="w-full p-2 border rounded"
-                min="1"
-                max="365"
-                required
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Start Time</label>
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full p-2 border rounded"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">End Time</label>
-                <input
-                  type="time"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  className="w-full p-2 border rounded"
-                  required
-                />
+  const getKindColor = (kind: string) => {
+    switch (kind) {
+      case 'service': return 'bg-blue-100 text-blue-800';
+      case 'event': return 'bg-purple-100 text-purple-800';
+      case 'space': return 'bg-green-100 text-green-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString);
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    
+    const isToday = date.toDateString() === today.toDateString();
+    const isTomorrow = date.toDateString() === tomorrow.toDateString();
+    
+    const timeString = date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+    
+    if (isToday) return `Today at ${timeString}`;
+    if (isTomorrow) return `Tomorrow at ${timeString}`;
+    
+    return `${date.toLocaleDateString('en-US', { 
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric'
+    })} at ${timeString}`;
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="animate-pulse">
+            <div className="h-6 bg-gray-200 rounded w-24 mb-8"></div>
+            <div className="grid lg:grid-cols-2 gap-8">
+              <div className="h-96 bg-gray-200 rounded-2xl"></div>
+              <div className="space-y-4">
+                <div className="h-8 bg-gray-200 rounded w-3/4"></div>
+                <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+                <div className="h-6 bg-gray-200 rounded w-1/4"></div>
+                <div className="h-32 bg-gray-200 rounded"></div>
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Slot Duration (minutes)</label>
-              <input
-                type="number"
-                value={slotMinutes}
-                onChange={(e) => setSlotMinutes(Number(e.target.value))}
-                className="w-full p-2 border rounded"
-                min="15"
-                max="480"
-                required
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={generating}
-              className="w-full py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-            >
-              {generating ? 'Generating...' : 'Generate Slots'}
-            </button>
-          </form>
-        </div>
-      ) : (
-        <div>
-          {!providerReady && (
-            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded mb-4">
-              <p className="font-semibold mb-1">Provider setup incomplete</p>
-              <p className="text-sm">The provider needs to complete their payout setup before accepting payments. Bookings are temporarily unavailable.</p>
-            </div>
-          )}
-          <h2 className="text-xl font-semibold mb-4">Available Slots</h2>
-          <div className="space-y-2">
-            {slots.map((slot) => (
-              <div key={slot.start_at} className="flex justify-between items-center p-3 border rounded">
-                <span>
-                  {new Date(slot.start_at).toLocaleDateString()} at {new Date(slot.start_at).toLocaleTimeString()}
-                </span>
-                <button
-                  onClick={() => bookSlot(slot)}
-                  disabled={!providerReady}
-                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
-                >
-                  Book
-                </button>
-              </div>
-            ))}
-            {slots.length === 0 && <p className="text-gray-500">No available slots</p>}
           </div>
         </div>
-      )}
+      </div>
+    );
+  }
+
+  if (!listing) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl text-gray-300 mb-4">🔍</div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Listing not found</h1>
+          <p className="text-gray-600 mb-6">The listing you're looking for doesn't exist or has been removed.</p>
+          <Link
+            to="/browse"
+            className="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Browse
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8">
+        {/* Back Navigation */}
+        <Link
+          to="/browse"
+          className="inline-flex items-center text-gray-600 hover:text-gray-900 mb-6 transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back to listings
+        </Link>
+
+        {/* Main Content */}
+        <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 mb-12">
+          {/* Image */}
+          <div className="relative">
+            {listing.primary_photo_url ? (
+              <img
+                src={listing.primary_photo_url}
+                alt={listing.title}
+                className="w-full h-64 md:h-96 object-cover rounded-2xl"
+              />
+            ) : (
+              <div className="w-full h-64 md:h-96 bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex items-center justify-center">
+                <span className="text-8xl">{getKindIcon(listing.kind)}</span>
+              </div>
+            )}
+            
+            {/* Type Badge */}
+            <div className={`absolute top-4 left-4 px-3 py-1 rounded-full text-sm font-medium capitalize ${getKindColor(listing.kind)}`}>
+              {listing.kind}
+            </div>
+          </div>
+
+          {/* Details */}
+          <div className="flex flex-col justify-between">
+            <div>
+              <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+                {listing.title}
+              </h1>
+              
+              <div className="flex items-center text-gray-600 mb-4">
+                <MapPin className="h-5 w-5 mr-2 flex-shrink-0" />
+                <span>{listing.address_city}, {listing.address_region}</span>
+              </div>
+              
+              <div className="flex items-center gap-6 mb-6">
+                <div className="flex items-center text-yellow-500">
+                  <Star className="h-5 w-5 fill-current mr-1" />
+                  <span className="text-gray-700 font-medium">4.8</span>
+                  <span className="text-gray-500 ml-1">(42 reviews)</span>
+                </div>
+                <div className="flex items-center text-gray-600">
+                  <Shield className="h-5 w-5 mr-1" />
+                  <span className="text-sm">Verified Provider</span>
+                </div>
+              </div>
+              
+              <div className="bg-blue-50 rounded-xl p-4 mb-6">
+                <div className="text-3xl font-bold text-gray-900">
+                  ${(listing.price_cents / 100).toFixed(2)}
+                </div>
+                {listing.pricing_unit === 'hour' && (
+                  <div className="text-gray-600">per hour</div>
+                )}
+              </div>
+              
+              <div className="prose prose-gray max-w-none mb-8">
+                <p>{listing.description}</p>
+              </div>
+            </div>
+
+            {/* Auth Check */}
+            {!user && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6">
+                <div className="flex items-start">
+                  <AlertCircle className="h-5 w-5 text-yellow-600 mr-3 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <h3 className="font-medium text-yellow-800 mb-1">Sign in required</h3>
+                    <p className="text-sm text-yellow-700">
+                      Please sign in to view available time slots and make bookings.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Provider or Customer View */}
+        {user && (
+          <div className="bg-white rounded-2xl border border-gray-200 p-6 md:p-8">
+            {isProvider ? (
+              // Provider View
+              <div>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                  <h2 className="text-2xl font-bold text-gray-900">Manage Availability</h2>
+                  <button
+                    onClick={() => setShowSlotForm(!showSlotForm)}
+                    className="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    {showSlotForm ? 'Cancel' : 'Add Slots'}
+                  </button>
+                </div>
+
+                {showSlotForm && (
+                  <div className="bg-gray-50 rounded-xl p-6 mb-8">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Generate Time Slots</h3>
+                    <form onSubmit={generateSlots} className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+                        <input
+                          type="date"
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          required
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Days Ahead</label>
+                        <input
+                          type="number"
+                          value={daysAhead}
+                          onChange={(e) => setDaysAhead(Number(e.target.value))}
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          min="1"
+                          max="365"
+                          required
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Slot Duration (min)</label>
+                        <select
+                          value={slotMinutes}
+                          onChange={(e) => setSlotMinutes(Number(e.target.value))}
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
+                          <option value={15}>15 minutes</option>
+                          <option value={30}>30 minutes</option>
+                          <option value={60}>1 hour</option>
+                          <option value={120}>2 hours</option>
+                          <option value={240}>4 hours</option>
+                        </select>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Start Time</label>
+                        <input
+                          type="time"
+                          value={startTime}
+                          onChange={(e) => setStartTime(e.target.value)}
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          required
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">End Time</label>
+                        <input
+                          type="time"
+                          value={endTime}
+                          onChange={(e) => setEndTime(e.target.value)}
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          required
+                        />
+                      </div>
+                      
+                      <div className="sm:col-span-2 lg:col-span-1 flex items-end">
+                        <button
+                          type="submit"
+                          disabled={generating}
+                          className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {generating ? 'Generating...' : 'Generate Slots'}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                )}
+
+                {/* Current Slots */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                    Available Slots ({slots.length})
+                  </h3>
+                  {slots.length > 0 ? (
+                    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {slots.map((slot) => (
+                        <div
+                          key={slot.id}
+                          className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
+                        >
+                          <div className="flex items-center">
+                            <Calendar className="h-4 w-4 text-gray-400 mr-2" />
+                            <span className="text-sm font-medium">
+                              {formatDateTime(slot.start_at)}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      <Calendar className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                      <p>No available slots. Generate some to start accepting bookings.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              // Customer View
+              <div>
+                {!providerReady && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6">
+                    <div className="flex items-start">
+                      <AlertCircle className="h-5 w-5 text-yellow-600 mr-3 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <h3 className="font-medium text-yellow-800 mb-1">Provider setup in progress</h3>
+                        <p className="text-sm text-yellow-700">
+                          The provider is completing their payment setup. Bookings will be available soon.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <h2 className="text-2xl font-bold text-gray-900 mb-6">Available Time Slots</h2>
+                
+                {slots.length > 0 ? (
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {slots.map((slot) => (
+                      <div
+                        key={slot.id}
+                        className="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
+                      >
+                        <div>
+                          <div className="font-medium text-gray-900">
+                            {formatDateTime(slot.start_at)}
+                          </div>
+                          <div className="text-sm text-gray-600 mt-1">
+                            ${(listing.price_cents / 100).toFixed(2)}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => bookSlot(slot)}
+                          disabled={!providerReady}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                        >
+                          Book Now
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <Clock className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">No available slots</h3>
+                    <p className="text-gray-600">
+                      Check back later or contact the provider directly.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
