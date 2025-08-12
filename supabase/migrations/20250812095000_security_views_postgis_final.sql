@@ -1,10 +1,10 @@
--- BEGIN MIGRATION: Security Views and PostGIS Setup
+-- BEGIN MIGRATION: Security Views and PostGIS Setup (Final)
 -- This migration is fully idempotent - safe to run multiple times
 
 -- ========================================
 -- 1) Ensure PostGIS is available
 -- ========================================
-CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA extensions;
+CREATE EXTENSION IF NOT EXISTS postgis;
 
 -- ========================================
 -- 2) Add geography column to listings
@@ -31,7 +31,7 @@ BEGIN
     WHERE table_schema='public' AND table_name='listings' AND column_name='lng'
   ) THEN
     UPDATE public.listings
-    SET location = extensions.ST_SetSRID(extensions.ST_MakePoint(lng, lat), 4326)::extensions.geography
+    SET location = ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography
     WHERE location IS NULL AND lat IS NOT NULL AND lng IS NOT NULL;
   END IF;
 END$$;
@@ -51,19 +51,57 @@ END$$;
 -- ========================================
 -- 3) Defense in depth: Revoke anon SELECT on base tables
 -- ========================================
--- Safe to run even if no prior grants exist
-REVOKE SELECT ON TABLE public.profiles       FROM anon;
-REVOKE SELECT ON TABLE public.providers      FROM anon;
-REVOKE SELECT ON TABLE public.listings       FROM anon;
-REVOKE SELECT ON TABLE public.listing_slots  FROM anon;
-REVOKE SELECT ON TABLE public.bookings       FROM anon;
+DO $$
+BEGIN
+  REVOKE SELECT ON TABLE public.profiles FROM anon;
+EXCEPTION
+  WHEN undefined_table THEN NULL;
+  WHEN undefined_object THEN NULL;
+END$$;
+
+DO $$
+BEGIN
+  REVOKE SELECT ON TABLE public.providers FROM anon;
+EXCEPTION
+  WHEN undefined_table THEN NULL;
+  WHEN undefined_object THEN NULL;
+END$$;
+
+DO $$
+BEGIN
+  REVOKE SELECT ON TABLE public.listings FROM anon;
+EXCEPTION
+  WHEN undefined_table THEN NULL;
+  WHEN undefined_object THEN NULL;
+END$$;
+
+DO $$
+BEGIN
+  REVOKE SELECT ON TABLE public.listing_slots FROM anon;
+EXCEPTION
+  WHEN undefined_table THEN NULL;
+  WHEN undefined_object THEN NULL;
+END$$;
+
+DO $$
+BEGIN
+  REVOKE SELECT ON TABLE public.bookings FROM anon;
+EXCEPTION
+  WHEN undefined_table THEN NULL;
+  WHEN undefined_object THEN NULL;
+END$$;
 
 -- ========================================
--- 4) Create/Replace public READ-ONLY views
+-- 4) Drop and recreate public views with correct columns
 -- ========================================
+
+-- Drop existing views first to avoid column conflicts
+DROP VIEW IF EXISTS public.public_listing_slots CASCADE;
+DROP VIEW IF EXISTS public.public_listings CASCADE;
+DROP VIEW IF EXISTS public.public_profiles CASCADE;
 
 -- Public profiles view - no emails or sensitive data
-CREATE OR REPLACE VIEW public.public_profiles AS
+CREATE VIEW public.public_profiles AS
 SELECT
   p.id,
   COALESCE(p.slug, p.id::text) AS slug,
@@ -80,8 +118,7 @@ FROM public.profiles p;
 COMMENT ON VIEW public.public_profiles IS 'Public-safe profile data for anonymous access';
 
 -- Public listings view - only active listings with safe fields
--- Note: Using address_city, address_region, address_country from your schema
-CREATE OR REPLACE VIEW public.public_listings AS
+CREATE VIEW public.public_listings AS
 SELECT
   l.id,
   COALESCE(l.slug, l.id::text) AS slug,
@@ -110,7 +147,7 @@ WHERE COALESCE(l.is_active, true) = true;
 COMMENT ON VIEW public.public_listings IS 'Public-safe listing data, only shows active listings';
 
 -- Public listing slots view - only future slots for active listings
-CREATE OR REPLACE VIEW public.public_listing_slots AS
+CREATE VIEW public.public_listing_slots AS
 SELECT
   s.listing_id,
   s.start_at,
@@ -145,67 +182,44 @@ END$$;
 -- 7) Storage RLS policies for public bucket
 -- ========================================
 
+-- Drop existing policies if they exist to recreate cleanly
+DROP POLICY IF EXISTS "Public read public bucket" ON storage.objects;
+DROP POLICY IF EXISTS "Users write to their folder" ON storage.objects;
+DROP POLICY IF EXISTS "Users update/delete their files" ON storage.objects;
+
 -- Policy: Anyone can read files in public bucket
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies 
-    WHERE schemaname='storage' 
-    AND tablename='objects' 
-    AND policyname='Public read public bucket'
-  ) THEN
-    CREATE POLICY "Public read public bucket"
-    ON storage.objects
-    FOR SELECT
-    TO anon
-    USING (bucket_id = 'public');
-  END IF;
-END$$;
+CREATE POLICY "Public read public bucket"
+ON storage.objects
+FOR SELECT
+TO anon
+USING (bucket_id = 'public');
 
 -- Policy: Authenticated users can write to their own folder
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies 
-    WHERE schemaname='storage' 
-    AND tablename='objects' 
-    AND policyname='Users write to their folder'
-  ) THEN
-    CREATE POLICY "Users write to their folder"
-    ON storage.objects
-    FOR INSERT
-    TO authenticated
-    WITH CHECK (
-      bucket_id = 'public'
-      AND (storage.foldername(name))[1] = auth.uid()::text
-    );
-  END IF;
-END$$;
+CREATE POLICY "Users write to their folder"
+ON storage.objects
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  bucket_id = 'public'
+  AND (storage.foldername(name))[1] = auth.uid()::text
+);
 
 -- Policy: Users can update/delete their own files
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies 
-    WHERE schemaname='storage' 
-    AND tablename='objects' 
-    AND policyname='Users update/delete their files'
-  ) THEN
-    CREATE POLICY "Users update/delete their files"
-    ON storage.objects
-    FOR ALL
-    TO authenticated
-    USING (
-      bucket_id = 'public'
-      AND (storage.foldername(name))[1] = auth.uid()::text
-    );
-  END IF;
-END$$;
+CREATE POLICY "Users update/delete their files"
+ON storage.objects
+FOR ALL
+TO authenticated
+USING (
+  bucket_id = 'public'
+  AND (storage.foldername(name))[1] = auth.uid()::text
+);
 
 -- ========================================
--- 8) Optional: Create nearby listings RPC
+-- 8) Create nearby listings RPC
 -- ========================================
-CREATE OR REPLACE FUNCTION public.nearby_listings(
+DROP FUNCTION IF EXISTS public.nearby_listings(double precision, double precision, integer);
+
+CREATE FUNCTION public.nearby_listings(
   p_lat double precision,
   p_lng double precision,
   p_radius_km integer DEFAULT 10
@@ -226,18 +240,18 @@ AS $$
     l.id,
     l.slug,
     l.title,
-    ROUND((extensions.ST_Distance(
+    ROUND((ST_Distance(
       l_base.location,
-      extensions.ST_SetSRID(extensions.ST_MakePoint(p_lng, p_lat), 4326)::extensions.geography
+      ST_SetSRID(ST_MakePoint(p_lng, p_lat), 4326)::geography
     ) / 1000)::numeric, 2) AS distance_km,
     l.city,
     l.provider_name
   FROM public.public_listings l
   JOIN public.listings l_base ON l.id = l_base.id
   WHERE l_base.location IS NOT NULL
-  AND extensions.ST_DWithin(
+  AND ST_DWithin(
     l_base.location,
-    extensions.ST_SetSRID(extensions.ST_MakePoint(p_lng, p_lat), 4326)::extensions.geography,
+    ST_SetSRID(ST_MakePoint(p_lng, p_lat), 4326)::geography,
     p_radius_km * 1000  -- Convert km to meters
   )
   ORDER BY distance_km
@@ -252,5 +266,3 @@ COMMENT ON FUNCTION public.nearby_listings IS 'Find listings within a radius of 
 -- ========================================
 -- END MIGRATION
 -- ========================================
-
--- Verification: Run scripts/sql_verify.sql after this migration
