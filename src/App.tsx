@@ -1,34 +1,28 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import Onboarding from './pages/onboarding'
+import OnboardingComplete from './pages/onboarding/complete'
+import NewListing from './pages/listings/new'
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={
+          <div className="p-8">
+            <h1>Marketplace</h1>
+            <nav className="mt-4 space-y-2">
+              <div><a href="/onboarding" className="text-blue-600">Onboarding</a></div>
+              <div><a href="/listings/new" className="text-blue-600">New Listing</a></div>
+            </nav>
+          </div>
+        } />
+        <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/onboarding/complete" element={<OnboardingComplete />} />
+        <Route path="/listings/new" element={<NewListing />} />
+        <Route path="/listings/:id" element={<div className="p-8">Listing detail (Step 3)</div>} />
+        <Route path="/browse" element={<div className="p-8">Browse listings</div>} />
+      </Routes>
+    </BrowserRouter>
   )
 }
 
