@@ -6,6 +6,7 @@ import OnboardingComplete from './pages/onboarding/complete'
 import NewListing from './pages/listings/new'
 import ListingPage from './pages/listings/[id]'
 import BookingSuccess from './pages/bookings/[id]/success'
+import Dashboard from './pages/dashboard'
 import Terms from './pages/terms'
 import Privacy from './pages/privacy'
 import Browse from './pages/browse'
@@ -21,6 +22,7 @@ function App() {
           <Route path="listings/new" element={<NewListing />} />
           <Route path="listings/:id" element={<ListingPage />} />
           <Route path="bookings/:id/success" element={<BookingSuccess />} />
+          <Route path="dashboard" element={<Dashboard />} />
           <Route path="browse" element={<Browse />} />
           <Route path="terms" element={<Terms />} />
           <Route path="privacy" element={<Privacy />} />
