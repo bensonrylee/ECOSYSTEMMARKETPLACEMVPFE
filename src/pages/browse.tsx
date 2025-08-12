@@ -29,6 +29,7 @@ export default function Browse() {
     maxPrice: ''
   });
 
+
   useEffect(() => {
     loadListings();
   }, [filters, searchTerm]);
