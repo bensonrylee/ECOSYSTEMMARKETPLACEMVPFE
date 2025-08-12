@@ -3,18 +3,19 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-This is an Ecosystem marketplace application built with React, TypeScript, and Vite. It integrates with Stripe for payments and Firebase for backend services.
+This is a marketplace application with Stripe Connect integration, built with React 19, TypeScript, and Vite. It uses Supabase for backend services and supports provider onboarding, listings management, and payment processing through Stripe Connect.
 
 ## Tech Stack
 - **Frontend Framework**: React 19 with TypeScript
-- **Build Tool**: Vite 7
+- **Build Tool**: Vite 7  
 - **Styling**: Tailwind CSS 4
-- **Payment Processing**: Stripe (stripe-js and server SDK)
-- **Backend**: Firebase 12
-- **State Management**: Zustand 5
+- **Backend**: Supabase (PostgreSQL + Edge Functions)
+- **Payment Processing**: Stripe Connect with Express accounts
+- **Routing**: React Router DOM 7
 - **Forms**: React Hook Form with Zod validation
 - **UI Components**: Headless UI, Lucide React icons
-- **Data Fetching**: TanStack React Query
+- **State Management**: Zustand 5
+- **Testing**: Vitest with Happy DOM
 
 ## Development Commands
 
@@ -22,8 +23,11 @@ This is an Ecosystem marketplace application built with React, TypeScript, and V
 # Start development server
 npm run dev
 
-# Build for production
+# Build for production  
 npm run build
+
+# Run tests
+npm test
 
 # Run ESLint
 npm run lint
@@ -31,52 +35,103 @@ npm run lint
 # Preview production build
 npm run preview
 
-# Type checking (runs during build)
+# Type checking
 tsc -b
+
+# Run single test file
+npm test -- <test-file-name>
 ```
 
-## Project Structure
+## Architecture Overview
 
+### Frontend Structure
+- **Pages**: Route-based components in `/pages` with nested routing (listings/[id], bookings/[id]/success)
+- **Components**: Reusable UI components with Layout component providing navigation
+- **Library Code**: Core utilities in `/lib` for Supabase client, payment helpers, and Stripe integration
+- **Types**: TypeScript definitions in `/types` including generated Supabase types
+
+### Backend Architecture
+- **Supabase Project**: PostgreSQL database with Row-Level Security (RLS) policies
+- **Edge Functions**: Deno-based serverless functions for payment operations
+  - `stripe-connect-link`: Provider onboarding to Stripe Connect
+  - `checkout`: Create checkout sessions for bookings
+  - `stripe-webhook`: Handle Stripe webhook events
+  - `update-provider-capabilities`: Update provider payment capabilities
+
+### Payment Flow
+1. **Provider Onboarding**: Stripe Connect Express account setup via `stripe-connect-link` function
+2. **Booking Creation**: Frontend creates booking record, calls `checkout` function
+3. **Payment Processing**: Stripe Checkout handles payment, webhook updates booking status
+4. **Success Handling**: Success page polls for payment confirmation
+
+## Critical Development Constraints
+
+### 🚫 PROTECTED FILES (Never Modify)
+- `supabase/**` - Database migrations, Edge Functions, configuration
+- `src/lib/supabase.ts` - Supabase client configuration  
+- `src/lib/payments.ts` - Payment helper functions
+- `.env*` files - Environment variables
+- Any SQL files or database migrations
+
+### ✅ SAFE TO MODIFY (Frontend Only)
+- `src/pages/**` - Page components
+- `src/components/**` - UI components  
+- `src/types/index.ts` - Frontend type definitions (not Supabase generated types)
+- `public/**` - Static assets
+- `docs/**` - Documentation
+
+### Data Access Rules
+- **Public Data**: Use secure views (`public_profiles`, `public_listings`, `public_listing_slots`)
+- **Authentication**: Always use `supabase.auth` methods from `src/lib/supabase.ts`
+- **Payments**: Only use functions from `src/lib/payments.ts`
+
+## Environment Setup
+
+Required environment variables (all prefixed with `VITE_` for Vite access):
 ```
-/src
-  /components    # React components
-  /hooks        # Custom React hooks
-  /lib          # Utility functions and configurations
-  /pages        # Page components
-  /services     # API and external service integrations
-  /store        # Zustand store definitions
-  /types        # TypeScript type definitions
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
 ```
 
-## Key Configuration Files
+## Testing Strategy
 
-- `tailwind.config.js` - Tailwind CSS configuration
-- `postcss.config.js` - PostCSS configuration for Tailwind
-- `vite.config.ts` - Vite build configuration
-- `tsconfig.json` - TypeScript configuration
-- `eslint.config.js` - ESLint rules
+- **Unit Tests**: Use Vitest for utility functions and components
+- **Environment**: Happy DOM for DOM simulation
+- **Test Files**: Co-located with source files using `.test.ts` suffix
+- **Coverage**: Focus on critical payment flows and authentication
 
-## Stripe Integration Notes
+## Branch Strategy
+- **Main Branch**: `main` (production-ready)
+- **Development Branch**: `fe-build` (active frontend development)
+- **Workflow**: Create PRs from feature branches to `main`
 
-The project uses both `@stripe/stripe-js` for client-side operations and `stripe` SDK for server-side operations. Stripe CLI has been configured with account ID: acct_1RnmHHAtcuskq3MV
+## Key Integration Points
 
-## Environment Variables
+### Stripe Connect API Contracts
+All payment functions expect exact request shapes:
 
-Create a `.env` file with the following variables:
+**Provider Onboarding**:
+```typescript
+POST /functions/v1/stripe-connect-link
+{ returnUrl: string, accountId?: string }
 ```
-VITE_STRIPE_PUBLISHABLE_KEY=
-VITE_FIREBASE_API_KEY=
-VITE_FIREBASE_AUTH_DOMAIN=
-VITE_FIREBASE_PROJECT_ID=
-VITE_FIREBASE_STORAGE_BUCKET=
-VITE_FIREBASE_MESSAGING_SENDER_ID=
-VITE_FIREBASE_APP_ID=
+
+**Checkout Session**:
+```typescript  
+POST /functions/v1/checkout
+{ booking_id: string, provider_connect_id: string, success_url: string, cancel_url: string }
 ```
+
+### Database Schema
+- **Core Tables**: profiles, providers, listings, listing_slots, bookings
+- **Public Views**: Secure, read-only views for anonymous access
+- **RLS Policies**: Row-level security for data isolation
 
 ## Development Workflow
 
-1. All Vite environment variables must be prefixed with `VITE_` to be accessible in the client
-2. Use TypeScript strict mode for type safety
-3. Follow React 19 patterns and best practices
-4. Tailwind classes should be used for styling
-5. Form validation should use Zod schemas with React Hook Form
+1. **Setup**: Work on `fe-build` branch for frontend changes
+2. **Testing**: Run `npm run build && npm test` before commits  
+3. **Constraints**: Never modify protected backend files
+4. **Data Access**: Use public views for anonymous reads, authenticated queries for user data
+5. **Payments**: Use existing payment helpers, never modify payment logic
+6. **Responsive**: Ensure components work at 360px, 768px, 1280px breakpoints
