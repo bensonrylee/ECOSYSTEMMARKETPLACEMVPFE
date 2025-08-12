@@ -7,6 +7,10 @@ import NewListing from './pages/listings/new'
 import ListingPage from './pages/listings/[id]'
 import BookingSuccess from './pages/bookings/[id]/success'
 import Dashboard from './pages/dashboard'
+import Profile from './pages/profile'
+import EditProfile from './pages/profile/edit'
+import Search from './pages/search'
+import NotFound from './pages/404'
 import Terms from './pages/terms'
 import Privacy from './pages/privacy'
 import Browse from './pages/browse'
@@ -23,9 +27,13 @@ function App() {
           <Route path="listings/:id" element={<ListingPage />} />
           <Route path="bookings/:id/success" element={<BookingSuccess />} />
           <Route path="dashboard" element={<Dashboard />} />
+          <Route path="profile" element={<Profile />} />
+          <Route path="profile/edit" element={<EditProfile />} />
+          <Route path="search" element={<Search />} />
           <Route path="browse" element={<Browse />} />
           <Route path="terms" element={<Terms />} />
           <Route path="privacy" element={<Privacy />} />
+          <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
     </BrowserRouter>
