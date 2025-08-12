@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 // Slot generation helper
 export function generateSlots(date: Date, duration: number = 60, count: number = 8) {

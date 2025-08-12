@@ -40,8 +40,9 @@ export default function NewListing() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    const sessionResult = await supabase.auth.getSession();
+    if (!sessionResult.data.session) return;
+    const session = sessionResult.data.session;
 
     const priceNum = parseInt(priceCents);
     if (isNaN(priceNum) || priceNum <= 0) {
@@ -79,13 +80,7 @@ export default function NewListing() {
   if (loading) {
     return <div className="p-8">Loading...</div>;
   }
-
-  const { data: { session } } = supabase.auth.getSession();
   
-  if (!session) {
-    return <div className="p-8">Sign in to continue</div>;
-  }
-
   if (!isProvider) {
     return <div className="p-8">Provider access required</div>;
   }

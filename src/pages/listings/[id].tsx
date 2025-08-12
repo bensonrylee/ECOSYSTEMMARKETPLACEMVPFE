@@ -67,8 +67,8 @@ export default function ListingPage() {
         
         setProviderReady(provider?.charges_enabled || false);
       }
-    } catch (err) {
-      alert(String(err.message || err));
+    } catch (err: any) {
+      alert(String(err?.message || err));
     } finally {
       setLoading(false);
     }
@@ -111,15 +111,15 @@ export default function ListingPage() {
         }
       }
       
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('listing_slots')
         .upsert(slotsToInsert, { onConflict: 'listing_id,start_at' });
       
       if (error) throw error;
       
       alert(`Generated ${slotsToInsert.length} slots`);
-    } catch (err) {
-      alert(String(err.message || err));
+    } catch (err: any) {
+      alert(String(err?.message || err));
     } finally {
       setGenerating(false);
     }
@@ -172,8 +172,8 @@ export default function ListingPage() {
         provider.stripe_connect_id,
         listing.id
       );
-    } catch (err) {
-      alert(String(err.message || err));
+    } catch (err: any) {
+      alert(String(err?.message || err));
     }
   }
 
