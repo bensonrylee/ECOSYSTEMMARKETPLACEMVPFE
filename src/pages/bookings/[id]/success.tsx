@@ -27,7 +27,6 @@ interface Booking {
     kind: string;
   } | null;
   provider: {
-    id: string;
     email: string;
   } | null;
 }
@@ -94,8 +93,8 @@ export default function BookingSuccess() {
       
       setBooking({
         ...data,
-        listing: data.listings,
-        provider: data.profiles
+        listing: Array.isArray(data.listings) ? data.listings[0] : data.listings,
+        provider: Array.isArray(data.profiles) ? data.profiles[0] : data.profiles
       });
       
       // Stop polling if paid
