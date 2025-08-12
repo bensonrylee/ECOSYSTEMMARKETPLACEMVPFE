@@ -156,25 +156,27 @@ export default function Home() {
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-12 md:py-16 bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+
+      {/* Call to Action */}
+      <section className="py-12 sm:py-16 lg:py-20 bg-gradient-to-r from-blue-600 to-purple-600 text-white">
         <div className="max-w-4xl mx-auto text-center px-4 sm:px-6 lg:px-8">
-          <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold mb-4 md:mb-6">
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-4 sm:mb-6">
             Ready to Get Started?
           </h2>
-          <p className="text-lg md:text-xl text-blue-100 mb-8 md:mb-10">
-            Join thousands of satisfied customers and providers on our platform
+          <p className="text-lg sm:text-xl text-blue-100 mb-8 sm:mb-10 leading-relaxed">
+            Join thousands of satisfied customers and providers on our platform today
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <Link
               to="/onboarding"
-              className="inline-flex items-center justify-center px-8 py-4 bg-white text-blue-700 rounded-xl font-semibold hover:bg-blue-50 transition-all duration-200 shadow-lg"
+              className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-4 bg-white text-blue-700 rounded-xl font-semibold hover:bg-blue-50 transition-all duration-200 shadow-lg hover:shadow-xl gap-2"
             >
               Start as Provider
+              <ArrowRight className="w-5 h-5" />
             </Link>
             <Link
               to="/browse"
-              className="inline-flex items-center justify-center px-8 py-4 bg-transparent border-2 border-white text-white rounded-xl font-semibold hover:bg-white hover:text-blue-700 transition-all duration-200"
+              className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-4 bg-transparent border-2 border-white/80 text-white rounded-xl font-semibold hover:bg-white hover:text-blue-700 transition-all duration-200 backdrop-blur-sm"
             >
               Find Services
             </Link>
