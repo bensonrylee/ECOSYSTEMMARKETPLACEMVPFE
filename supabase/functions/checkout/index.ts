@@ -5,8 +5,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, { apiVersion: "2024-06-20" });
 
+// Use APP_URL for CORS in production, * for local dev
+const appUrl = Deno.env.get("APP_URL") || "http://localhost:5173";
+const isDev = appUrl.includes("localhost");
+
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": isDev ? "*" : appUrl,
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
@@ -53,7 +57,22 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Destination mismatch" }), { status: 400, headers: corsHeaders });
     }
 
-    // 2.3 Create session with idempotency keyed to booking_id
+    // 2.3 Check if session already exists for this booking
+    const { data: existingSession } = await supabase
+      .from("checkout_sessions")
+      .select("session_id")
+      .eq("booking_id", booking_id)
+      .single();
+
+    if (existingSession) {
+      // Session already exists, retrieve it from Stripe
+      const session = await stripe.checkout.sessions.retrieve(existingSession.session_id);
+      return new Response(JSON.stringify({ url: session.url }), {
+        headers: { "content-type": "application/json", ...corsHeaders },
+      });
+    }
+
+    // 2.4 Create new session with idempotency keyed to booking_id
     const params: Stripe.Checkout.SessionCreateParams = {
       mode: "payment",
       client_reference_id: booking.id,
@@ -77,6 +96,11 @@ serve(async (req) => {
       params,
       { idempotencyKey: booking.id } // retriable client calls won't double-create
     );
+
+    // 2.5 Store session ID to prevent duplicates
+    await supabase
+      .from("checkout_sessions")
+      .insert({ booking_id: booking.id, session_id: session.id });
 
     return new Response(JSON.stringify({ url: session.url }), {
       headers: { "content-type": "application/json", ...corsHeaders },

@@ -111,13 +111,19 @@ export default function Home() {
           <div className="flex justify-between items-center">
             <div className="text-xl font-bold">Marketplace</div>
             <div className="flex gap-6">
-              <a href="#" className="hover:text-white">Terms</a>
-              <a href="#" className="hover:text-white">Privacy</a>
-              <a href="#" className="hover:text-white">Contact</a>
+              <Link to="/terms" className="hover:text-white">Terms</Link>
+              <Link to="/privacy" className="hover:text-white">Privacy</Link>
+              <a href="mailto:support@marketplace.com" className="hover:text-white">Contact</a>
             </div>
           </div>
           <div className="mt-4 pt-4 border-t border-gray-700 text-center text-sm">
-            © 2024 Marketplace. All rights reserved.
+            <p>© 2024 Marketplace. All rights reserved.</p>
+            <p className="mt-2 text-xs text-gray-500">
+              Payments powered by{' '}
+              <a href="https://stripe.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-400">
+                Stripe
+              </a>
+            </p>
           </div>
         </div>
       </footer>

@@ -8,8 +8,12 @@ const endpointSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET")!;
 const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
   auth: { persistSession: false }
 });
+// Use APP_URL for CORS in production, * for local dev
+const appUrl = Deno.env.get("APP_URL") || "http://localhost:5173";
+const isDev = appUrl.includes("localhost");
+
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": isDev ? "*" : appUrl,
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 

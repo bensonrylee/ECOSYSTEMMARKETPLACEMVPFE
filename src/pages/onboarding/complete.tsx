@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 
 export default function OnboardingComplete() {
-  const [status, setStatus] = useState('Processing...');
+  const [status, setStatus] = useState('Verifying account status...');
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   useEffect(() => {
     const updateProvider = async () => {
@@ -15,24 +16,39 @@ export default function OnboardingComplete() {
           return;
         }
 
-        // Update provider with charges_enabled
-        const { error } = await supabase
-          .from('providers')
-          .update({ charges_enabled: true })
-          .eq('id', user.id);
+        // Get account ID from URL
+        const accountId = searchParams.get('acct');
+        if (!accountId) {
+          setStatus('No account ID found. Please try onboarding again.');
+          return;
+        }
+
+        // Call Edge Function to retrieve and update provider capabilities
+        const { data: session } = await supabase.auth.getSession();
+        const { data, error } = await supabase.functions.invoke('update-provider-capabilities', {
+          body: { accountId },
+          headers: {
+            Authorization: `Bearer ${session?.session?.access_token}`
+          }
+        });
 
         if (error) throw error;
 
-        setStatus('Success! Redirecting...');
-        setTimeout(() => navigate('/listings/new'), 2000);
+        if (data?.charges_enabled) {
+          setStatus('Success! You can now accept payments. Redirecting...');
+          setTimeout(() => navigate('/listings/new'), 2000);
+        } else {
+          setStatus('Account setup incomplete. You may need to provide additional information to Stripe.');
+          setTimeout(() => navigate('/onboarding'), 3000);
+        }
       } catch (err) {
-        setStatus('Error completing onboarding');
+        setStatus('Error verifying account status');
         console.error(err);
       }
     };
 
     updateProvider();
-  }, [navigate]);
+  }, [navigate, searchParams]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">

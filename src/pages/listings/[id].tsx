@@ -35,8 +35,10 @@ export default function ListingPage() {
       
       setUser(session.user);
       
+      // Use public view for anonymous users, full table for authenticated
+      const tableName = session ? 'listings' : 'public_listings';
       const { data: listingData, error: listingError } = await supabase
-        .from('listings')
+        .from(tableName)
         .select('*')
         .eq('id', id)
         .single();
@@ -47,12 +49,12 @@ export default function ListingPage() {
       setIsProvider(session.user.id === listingData.provider_id);
       
       if (!isProvider) {
-        // Load slots for customers
+        // Load slots for customers (use public view for anon)
+        const slotsTable = session ? 'listing_slots' : 'public_listing_slots';
         const { data: slotsData } = await supabase
-          .from('listing_slots')
+          .from(slotsTable)
           .select('*')
           .eq('listing_id', id)
-          .gt('start_at', new Date().toISOString())
           .order('start_at', { ascending: true })
           .limit(50);
         
@@ -260,8 +262,9 @@ export default function ListingPage() {
       ) : (
         <div>
           {!providerReady && (
-            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-3 rounded mb-4">
-              Provider not ready to accept payments
+            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded mb-4">
+              <p className="font-semibold mb-1">Provider setup incomplete</p>
+              <p className="text-sm">The provider needs to complete their payout setup before accepting payments. Bookings are temporarily unavailable.</p>
             </div>
           )}
           <h2 className="text-xl font-semibold mb-4">Available Slots</h2>

@@ -4,8 +4,12 @@ import Stripe from "https://esm.sh/stripe@16.6.0?target=deno";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, { apiVersion: "2024-06-20" });
 
+// Use APP_URL for CORS in production, * for local dev
+const appUrl = Deno.env.get("APP_URL") || "http://localhost:5173";
+const isDev = appUrl.includes("localhost");
+
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": isDev ? "*" : appUrl,
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
